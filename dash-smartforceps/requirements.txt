@@ -1,0 +1,5 @@
+dash
+gunicorn>=19.9.0
+numpy
+pandas
+plotly

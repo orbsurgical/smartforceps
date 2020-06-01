@@ -1,0 +1,10 @@
+name: dashr-smartforceps
+title:
+username:
+account: smartforceps
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2294124
+bundleId: 3143367
+url: https://smartforceps.shinyapps.io/dashr-smartforceps/
+when: 1589393540.24671
