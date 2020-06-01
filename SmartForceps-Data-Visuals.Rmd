@@ -1,0 +1,2329 @@
+---
+title: "SmartForceps Data Framework"
+author: "Project neuroArm, University of Calgary"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this document, we provide a data management and analytic framework for SmartForceps, a sensorized surgical bipolar forceps capable of quantifying the forces of tool-tissue interaction in microsurgery. We have shown that high force error is associated with bleeding, low force error with the need to repeat the task and force variability with both. We have further established that novice and intermediate level surgeons exert more force errors compared to experienced. The technology introduces a data-driven surgical paradigm whereby forces of tool-tissue interaction are used as an objective assessment metric for surgical competency. Together with the error warning system, the reduction of surgical error and improved patient safety is promised.
+
+The present document incorporates 20 cases of neurosurgery performed at Foothills Medical Centre, Calgary. The data were extracted and segmented for each task of microsurgery performed by an Expert and multiple Novice surgeons. The multimedia supplementary files for the software and device structure is available at [https://github.com/AmirBGitHub/smartforceps/](https://github.com/AmirBGitHub/smartforceps/).    
+
+The reader can **show** any code chunk by clicking on the *code* button. We chose to make the default for the code hidden since we: (a) wanted to improve the readability of this document; and (b) assumed that the readers will not be interested in reading every code chunk.
+
+****
+
+The snippet below documents the list of **R** libraries that were used in this research. For convenience, we used the pacman package since it allows for installing/loading the needed libraries in one step.
+
+```{r load_libraries, error=FALSE, warning=FALSE, cache=FALSE, include=TRUE, message=FALSE}
+rm(list = ls()) # clear global environment
+graphics.off() # close all graphics
+library(pacman) # needs to be installed first
+p_load(
+  reticulate,
+  readr,
+  htmltools,
+  vembedr,
+  devtools,
+  usethis,
+  slam,
+  reshape2,
+  data.table,
+  gridExtra,
+  extrafont,
+  ISLR,
+  jpeg,
+  coda,
+  abind,
+  chron,
+  fmsb,
+  gdata,
+  stringr,
+  lubridate,
+  ggplot2,
+  ggpubr,
+  gghighlight,
+  ggridges,
+  plotly,
+  tidyverse,
+  fBasics,
+  signal,
+  GeneCycle,
+  Rwave,
+  seewave,
+  spectral,
+  tsfeatures,
+  pracma
+  )
+
+#install_github('plotly/dashR', upgrade = TRUE)
+
+setwd("~/Desktop/Canada/neuroArm/SmartForceps/SmartForceps Data")
+
+```
+
+# Data Recording
+
+Data is generated through strain gauge sensors placed along the prongs of a bipolar forceps. The technology is designed and manufactured within OrbSurgical, ltd. in partnership with Bissinger, Germany. The calibrated data is analyzed and recorded in realtime through our software platform which is overviewed in the snippet below. Please navigate through different items in the dropdown list for various pages in the software.
+
+## SmartForceps Software {.tabset .tabset-dropdown}
+
+### Home Page
+
+![](https://raw.githubusercontent.com/AmirBGitHub/smartforceps/master/slide_pics/slide1.jpg){width=750px}
+
+### Adding New Case
+
+![](https://raw.githubusercontent.com/AmirBGitHub/smartforceps/master/slide_pics/slide2.jpg){width=750px}
+
+### Download Forceps and Hospital Data Page
+
+![](https://raw.githubusercontent.com/AmirBGitHub/smartforceps/master/slide_pics/slide3.jpg){width=750px}
+
+### Data Monitoring Page
+
+![](https://raw.githubusercontent.com/AmirBGitHub/smartforceps/master/slide_pics/slide4.jpg){width=750px}
+
+### Data Upload Page
+
+![](https://raw.githubusercontent.com/AmirBGitHub/smartforceps/master/slide_pics/slide5.jpg){width=750px}
+
+## Software Demo
+
+Below is a short demo of our software showing the force profiles in realtime with a high force error warning system (with 0.8 N threshold) and a voice recognition module to identify the keywords for different surgical tasks.
+
+<iframe width="760" height="427" src="https://www.youtube.com/embed/QvtnX4Gcyqw" frameborder="0" allowfullscreen></iframe>
+
+## Orbsurgical SmartForceps Web Application
+
+SmartForceps comes with a web application to manage the data, device characteristics (e.g. calibration factors), and medical center and surgeon information. This platform is designed in a way to manage the data to and from the cloud through integration into the software.
+
+![](https://raw.githubusercontent.com/AmirBGitHub/smartforceps/master/slide_pics/slide6.jpg){width=750px}
+
+
+## Future Direction: Performance Report to Surgeon {.tabset .tabset-dropdown}
+
+Following the ownership and interpretation of a big multi-institutional data asset, the ultimate goal will be to develop a surgical performance paradigm for efficient surgical education, thus ensuring the standardization of procedure and patient safety.
+
+### Performance Report Format
+
+![](https://raw.githubusercontent.com/AmirBGitHub/smartforceps/master/slide_pics/slide11.jpg){width=750px}
+
+### Performance Progress
+
+![](https://raw.githubusercontent.com/AmirBGitHub/smartforceps/master/slide_pics/slide13.jpg){width=750px}
+
+# Data Processing
+
+Data was extracted and analyzed using **R** programming platform. In the snippet below, we import the ".txt" files obtained from our Azure data cloud and the ".xlsx" file containing each task information (e.g. time stamp, task name, surgeon name, and remarks of potential intraoperative force errors) extracted from the surgical team voice recorded during each case. The imported data are structured as **R _dataframes_**. 
+
+We have extracted various features from the segmented task force data in each prong. The average value of features for both prongs were included in the future analysis. These time-series features included:
+
+1. **Force Duration**: duration of force application in one task segment. 
+
+2. **Force Average**: average of force value in one task segment. 
+
+3. **Force Max**: maximum of force value in one task segment. 
+
+4. **Force Min**: minimum of force value in one task segment. 
+
+5. **Force Range**: range of force value in one task segment. 
+
+6. **Force Peak Average**: average of peak force values in one task segment. 
+
+7. **1^st^ Derivative SD**: standard deviation for the first derivative of the force signal in one task segment.
+
+8. **Force Peak Counts**: number of force peaks in one task segment. 
+
+9. **Force Signal Frequency**: dominant time-series harmonics extracted from Fast Fourier Transform (FFT) of force value in one task segment. 
+
+10. **Force Cycle Length**: average time length of force cycles in one task segment. 
+
+11. **Force Signal Trend**: force time-series trend in one task segment. 
+
+12. **Force Signal Fluctuations**: force time-series fluctuation index in one task segment. 
+
+13. **Force Signal Linearity**: force time-series linearity index (from Teräsvirta’s nonlinearity test) in one task segment. 
+
+14. **Force Signal Stability**: force time-series stability index (variance of the means) in one task segment. 
+
+15. **Force Signal Lumpiness**: force time-series lumpiness index (variance of the variances) in one task segment. 
+
+16. **Force Signal Curvature**: force time-series curvature index (calculated based on the coefficients of an orthogonal quadratic regression) in one task segment. 
+
+17. **Force Signal Entropy**: force time-series forecastability in one task segment (low values indicate a high signal-to-noise ratio).
+
+18. **First Autocorrelation Minimum**: time of first minimum of the autocorrelation function in force time-series signal from one task segment.
+
+19. **First Autocorrelation Zero**: time of first zero crossing of the autocorrelation function in force time-series signal from one task segment.
+
+20. **Autocorrelation Function E1**: first autocorrelation coefficient from force time-series signal in one task segment.
+
+21. **Autocorrelation Function E10**: sum of the first ten squared autocorrelation coefficients from force time-series signal in one task segment.  
+
+
+The surgical tasks were classified as 5 main categories: 
+
+1. **Retracting**
+
+2. **Manipulation** 
+
+3. **Dissecting** 
+
+4. **Pulling**
+
+5. **Coagulation**
+
+
+```{r read_data, eval=FALSE, error=FALSE, message=FALSE, warning=FALSE, cache=TRUE, include=TRUE}
+
+data_info <- read.xls ("~/Desktop/Canada/neuroArm/SmartForceps/SmartForceps Data/Data Info.xlsx", 
+                       sheet = 1, header = TRUE)
+
+data_dir <- "~/Desktop/Canada/neuroArm/SmartForceps/SmartForceps Data"
+cases <- c(2:21)
+
+# preparing each case data
+for (i in cases) {
+  file_dir <- paste(c(data_dir, paste(c("Case", i), collapse = " "), "log data"), collapse ="/")
+  temp <- list.files(path = file_dir, pattern = "*.txt")
+  my_data <- data.frame()
+  for (j in 1:length(temp)) {
+    read_txt <- read.delim(paste(c(file_dir, temp[j]), collapse = "/"))
+    my_data <- rbind(my_data,
+                     cbind(data.frame(DataSection = rep(j, dim(read_txt)[1])),
+                           read_txt))
+    assign(paste0("case_", i, "_forcedata"), my_data)
+  }}
+
+# concatenating case data
+force_seg_data <- data.frame()
+force_seg_info <- data.frame()
+task_count <- c(0,0,0,0,0)
+outlier_count <- 0
+seg_num_res <- 0
+acqFreq <- 20
+for (i in 1:length(cases)) {
+  case_i_info <- data_info[data_info[, "Case"] == cases[i],]
+  case_i_data <- get(paste(c("case", cases[i], "forcedata"), collapse = "_"))
+
+  case_i_secpowerupstartidxs <- c(1, which(diff(case_i_data$DataSection) != 0) + 1)
+  case_i_secpoweruptimes <- case_i_data$MillisecondsSincePowerUp[case_i_secpowerupstartidxs]
+  
+  for (j in 1:dim(case_i_info)[1]) {
+    data_section <-
+      as.numeric(strsplit(toString(case_i_info$Remarks[j]), split = " ")[[1]][2])
+    if(is.na(strsplit(toString(case_i_info$Remarks[j]), split = " ")[[1]][5])){
+      novice_user <- "Expert"
+    } else {
+      novice_user <- "Novice"
+    }
+    task_type <-
+      strsplit(str_sub(case_i_info$Task[j]), split = " ")[[1]][1]
+    t_start <-
+      as.numeric(seconds(hms(case_i_info$TimeStart[j]))) * 1000 + case_i_secpoweruptimes[data_section]
+    t_end <-
+      as.numeric(seconds(hms(case_i_info$TimeEnd[j]))) * 1000 + case_i_secpoweruptimes[data_section]
+    idx_start <-
+      as.numeric(rownames(case_i_data[case_i_data[, "MillisecondsSincePowerUp"] == t_start, ]))
+    idx_end <-
+      as.numeric(rownames(case_i_data[case_i_data[, "MillisecondsSincePowerUp"] == t_end, ]))
+    
+    LeftCalibratedForce <- case_i_data[idx_start:idx_end, "LeftCalibratedForceValue"]
+    RightCalibratedForce <- case_i_data[idx_start:idx_end, "RightCalibratedForceValue"]
+    TimeS <- seq(0, length(idx_end:idx_start)*0.05-0.05, by=0.05)
+    
+    # filtering the outliers: cutoffValues = [time, max value, min value, task id]
+    taskCutoffValues <- switch(task_type, 
+                           "Coagulation"  = c(70,1.5, 1, 1), 
+                           "Pulling"      = c(30,1.5, 1, 2),
+                           "Manipulation" = c(30,1.5,0.5,3),
+                           "Dissecting"   = c(50,1.5,0.5,4),
+                           "Retracting"   = c(20,1.5,0.5,5),)
+    
+    segDur <- length(idx_end:idx_start)*0.05-0.05
+    segMax <- mean(max(RightCalibratedForce), 
+                   max(LeftCalibratedForce))
+    segMin <- abs(mean(min(RightCalibratedForce), 
+                       min(LeftCalibratedForce)))
+
+    if(sum(c(segDur, segMax, segMin) < taskCutoffValues[1:3]) == 3){
+      
+      task_count[taskCutoffValues[4]] <- task_count[taskCutoffValues[4]] + 1
+
+      # segment data
+      force_seg_data <- rbind(
+      force_seg_data,
+      data.frame(
+      "CaseNum" = rep(cases[i], length(idx_end:idx_start)),
+      "SegmentNum" = rep(j, length(idx_end:idx_start)),
+      "SegmentNumTask" = rep(task_count[taskCutoffValues[4]] ,length(idx_end:idx_start)),
+      "SegmentNumOverall" = rep(seg_num_res+j, length(idx_end:idx_start)),
+      "Time" = TimeS,
+      "LeftForce" = LeftCalibratedForce,
+      "RightForce" = RightCalibratedForce,
+      "TaskType" = rep(task_type, length(idx_end:idx_start))
+      ))
+      
+      forceDetrendLeft <- as.numeric(lm(LeftCalibratedForce ~TimeS)$residuals)
+      forceDetrendRight <- as.numeric(lm(RightCalibratedForce ~TimeS)$residuals)
+      # the first 10 harmonics of the signal
+      forceFreqLeft <- order(-Mod(fft(forceDetrendLeft))[1:(acqFreq/2)])-1 
+      forceFreqRight <- order(-Mod(fft(forceDetrendRight))[1:(acqFreq/2)])-1
+      # converting signal to time series
+      tsForceLeft <- ts(LeftCalibratedForce ,frequency = forceFreqLeft[1])
+      tsForceRight <- ts(RightCalibratedForce ,frequency = forceFreqRight[1])
+      # extracting time series features
+      tsFeaturesLeft <- tsfeatures(LeftCalibratedForce)
+      tsFeaturesRight <- tsfeatures(RightCalibratedForce)
+      
+      bf <- butter(1, 0.4, type="low")
+      LForceFilt <- filter(bf, LeftCalibratedForce) # apply filter
+      #plot(LeftCalibratedForce, type = "l")
+      #lines(LForceFilt, col = "red")
+      forcePeaksLeft <- findpeaks(as.numeric(LForceFilt), minpeakdistance = 5)
+      RForceFilt <- filter(bf, RightCalibratedForce) # apply filter
+      #plot(RightCalibratedForce, type = "l")
+      #lines(RForceFilt, col = "red")
+      forcePeaksRight <- findpeaks(as.numeric(RForceFilt), minpeakdistance = 5)
+      
+      plot.frequency.spectrum <- function(X.k, xlimits=c(0,length(X.k))) {
+        plot.data  <- cbind(0:(length(X.k)-1), Mod(X.k))
+        
+        # TODO: why this scaling is necessary?
+        plot.data[2:length(X.k),2] <- 2*plot.data[2:length(X.k),2] 
+        
+        plot(plot.data, t="h", lwd=2, main="", 
+             xlab="Frequency (Hz)", ylab="Strength", 
+             xlim=xlimits, ylim=c(0,max(Mod(plot.data[,2]))))
+      }      
+      
+      # segment info
+      force_seg_info <- rbind(
+      force_seg_info,
+      data.frame(
+      "CaseNum" = cases[i],
+      "SegmentNum" = j,
+      "SegmentNumOverall" = seg_num_res+j,
+      "TaskType" = task_type,
+      "User" = novice_user,
+      "DurationForce" = round(length(idx_end:idx_start)*0.05-0.05, digits=4),
+      "MeanForce" = round(mean(mean(LeftCalibratedForce), 
+                               mean(RightCalibratedForce)), digits=4),
+      "MaxForce" = round(mean(max(LeftCalibratedForce), 
+                              max(RightCalibratedForce)), digits=4),
+      "MinForce" = round(mean(min(LeftCalibratedForce), 
+                              min(RightCalibratedForce)), digits=4),
+      "RangeForce" = round(mean(abs(diff(range(LeftCalibratedForce))), 
+                                abs(diff(range(RightCalibratedForce)))), digits=4),
+      "ForcePeaks" = round(mean(colMeans(forcePeaksLeft)[1], 
+                                colMeans(forcePeaksRight)[1]), digits=4),
+      "DForceSD" = round(mean(std1st_der(LeftCalibratedForce), 
+                              std1st_der(RightCalibratedForce)), digits=4),
+      "nPeriod" = round(mean(dim(forcePeaksLeft)[1], 
+                             dim(forcePeaksRight)[1]), digits=4),
+      "Frequency" = round(mean(forceFreqLeft[1], 
+                               forceFreqRight[1]), digits=4),                        
+      "PeriodLn" = round(mean(max(TimeS)/forceFreqLeft[1], 
+                              max(TimeS)/forceFreqRight[1]), digits=4),   
+      "Trend" = round(mean(as.numeric(tsfeatures(LeftCalibratedForce)[4]), 
+                           as.numeric(tsfeatures(RightCalibratedForce)[4])), digits=4),  
+      "FluctAnal" = round(mean(fluctanal_prop_r1(LeftCalibratedForce), 
+                               fluctanal_prop_r1(RightCalibratedForce)), digits=4),  
+      "Spike" = round(mean(as.numeric(tsFeaturesLeft$spike), 
+                           as.numeric(tsFeaturesRight$spike)), digits=4),  
+      "Linearity" = round(mean(as.numeric(tsFeaturesLeft$linearity), 
+                               as.numeric(tsFeaturesRight$linearity)), digits=4),        
+      "Stability" = round(mean(stability(LeftCalibratedForce), 
+                               stability(RightCalibratedForce)), digits=4),   
+      "Lumpiness" = round(mean(lumpiness(LeftCalibratedForce), 
+                               lumpiness(RightCalibratedForce)), digits=4), 
+      "Curvature" = round(mean(as.numeric(tsFeaturesLeft$curvature), 
+                               as.numeric(tsFeaturesRight$curvature)), digits=4), 
+      "FirstMinAutocorr" = round(mean(firstmin_ac(LeftCalibratedForce), 
+                                      firstmin_ac(RightCalibratedForce)), digits=4),       
+      "FirstZeroAutocorr" = round(mean(firstzero_ac(LeftCalibratedForce), 
+                                       firstzero_ac(RightCalibratedForce)), digits=4), 
+      "AutocorrFuncE1" = round(mean(as.numeric(tsFeaturesLeft$e_acf1), 
+                                    as.numeric(tsFeaturesRight$e_acf1)), digits=4),       
+      "AutocorrFuncE10" = round(mean(as.numeric(tsFeaturesLeft$e_acf10), 
+                                     as.numeric(tsFeaturesRight$e_acf10)), digits=4),       
+      "Entropy" = round(mean(as.numeric(tsFeaturesLeft$entropy), 
+                             as.numeric(tsFeaturesRight$entropy)), digits=4),   
+      "AutocorrFuncX1" = round(mean(as.numeric(tsFeaturesLeft$x_acf1), 
+                                    as.numeric(tsFeaturesRight$x_acf1)), digits=4),  
+      "AutocorrFuncX10" = round(mean(as.numeric(tsFeaturesLeft$x_acf10), 
+                                     as.numeric(tsFeaturesRight$x_acf10)), digits=4),
+      "DiffAutocorrFunc1" = round(mean(as.numeric(tsFeaturesLeft$diff1_acf1), 
+                                       as.numeric(tsFeaturesRight$diff1_acf1)), digits=4),
+      "DiffAutocorrFunc10" = round(mean(as.numeric(tsFeaturesLeft$diff1_acf10), 
+                                        as.numeric(tsFeaturesRight$diff1_acf10)), digits=4),
+      "DDiffAutocorrFunc1" = round(mean(as.numeric(tsFeaturesLeft$diff2_acf1), 
+                                        as.numeric(tsFeaturesRight$diff2_acf1)), digits=4),  
+      "DDiffAutocorrFunc10" = round(mean(as.numeric(tsFeaturesLeft$diff2_acf10), 
+                                         as.numeric(tsFeaturesRight$diff2_acf10)), digits=4)       
+      ))
+      } 
+    else {
+      #print("outlier detected")
+      outlier_count <- outlier_count + 1
+    }
+
+  }
+  seg_num_res <- seg_num_res+dim(case_i_info)[1]
+}
+row.names(force_seg_info) <- 1:dim(force_seg_info)[1]
+
+
+force_summary <- 
+data.frame(
+"Coagulation.mean" = round(colMeans(force_seg_info[force_seg_info$TaskType %in% 'Coagulation',
+                                                   6:dim(force_seg_info)[2]]), digits=4),
+"Coagulation.std" = round(colStdevs(force_seg_info[force_seg_info$TaskType %in% 'Coagulation',
+                                                   6:dim(force_seg_info)[2]]), digits=4),
+"Pulling.mean" = round(colMeans(force_seg_info[force_seg_info$TaskType %in% 'Pulling', 
+                                               6:dim(force_seg_info)[2]]), digits=4),
+"Pulling.std" = round(colStdevs(force_seg_info[force_seg_info$TaskType %in% 'Pulling', 
+                                               6:dim(force_seg_info)[2]]), digits=4),
+"Manipulation.mean" = round(colMeans(force_seg_info[force_seg_info$TaskType %in% 'Manipulation', 
+                                                    6:dim(force_seg_info)[2]]), digits=4),
+"Manipulation.std" = round(colStdevs(force_seg_info[force_seg_info$TaskType %in% 'Manipulation', 
+                                                    6:dim(force_seg_info)[2]]), digits=4),
+"Dissecting.mean" = round(colMeans(force_seg_info[force_seg_info$TaskType %in% 'Dissecting', 
+                                                  6:dim(force_seg_info)[2]]), digits=4),
+"Dissecting.std" = round(colStdevs(force_seg_info[force_seg_info$TaskType %in% 'Dissecting', 
+                                                  6:dim(force_seg_info)[2]]), digits=4),
+"Retracting.mean" = round(colMeans(force_seg_info[force_seg_info$TaskType %in% 'Retracting', 
+                                                  6:dim(force_seg_info)[2]]), digits=4),
+"Retracting.std" = round(colStdevs(force_seg_info[force_seg_info$TaskType %in% 'Retracting', 
+                                                  6:dim(force_seg_info)[2]]), digits=4)
+)
+
+
+save(
+  case_2_forcedata,
+  case_3_forcedata,
+  case_4_forcedata,
+  case_5_forcedata,
+  case_6_forcedata,
+  case_7_forcedata,
+  case_8_forcedata,
+  case_9_forcedata,
+  case_10_forcedata,
+  case_11_forcedata,
+  case_12_forcedata,
+  case_13_forcedata,
+  case_14_forcedata,
+  case_15_forcedata,
+  case_16_forcedata,
+  case_17_forcedata,
+  case_18_forcedata,
+  case_19_forcedata,
+  case_20_forcedata,
+  case_21_forcedata,
+  file = "~/Desktop/Canada/neuroArm/SmartForceps/SmartForceps Data/SmartForcepsDataRead.RData")
+
+save(
+  force_seg_data,
+  file = "~/Desktop/Canada/neuroArm/SmartForceps/SmartForceps Data/SmartForcepsDataProcessed.RData"
+)
+
+save(
+  force_seg_info,
+  file = "~/Desktop/Canada/neuroArm/SmartForceps/SmartForceps Data/SmartForcepsDataFeature.RData"
+)
+
+save(
+  force_summary,
+  file = "~/Desktop/Canada/neuroArm/SmartForceps/SmartForceps Data/SmartForcepsDataSummary.RData"
+)
+```
+
+Table below is the summary of force statistics across different surgical tasks.
+
+```{r load_data, eval=TRUE, error=FALSE, message=FALSE, warning=FALSE, cache=TRUE, include=TRUE}
+
+load(
+  paste("~/Desktop/Canada/neuroArm/SmartForceps/SmartForceps Data/SmartForcepsDataRead.RData")
+)
+
+load(
+  paste("~/Desktop/Canada/neuroArm/SmartForceps/SmartForceps Data/SmartForcepsDataProcessed.RData")
+)
+
+load(
+  paste("~/Desktop/Canada/neuroArm/SmartForceps/SmartForceps Data/SmartForcepsDataFeature.RData")
+)
+
+load(
+  paste("~/Desktop/Canada/neuroArm/SmartForceps/SmartForceps Data/SmartForcepsDataSummary.RData")
+)
+
+force_summary
+
+```
+
+# Data Visualization 
+
+## Force Profiles {.tabset .tabset-dropdown}
+
+Below are the interactive figures of the force profiles for all 20 cases categorized in 5 different tasks. Please navigate through different items in the dropdown list for the left and right prong data.
+
+### Right Prong Force 
+
+```{r plot_data_right, eval=TRUE, fig.align='center', fig.height=7, fig.width=7, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+data_select_task <- force_seg_data[force_seg_data$TaskType == "Coagulation",]
+fig_c <- plot_ly()
+for (SegNum in 1:max(data_select_task$SegmentNumTask)) {
+  data_select_seg <- data_select_task[data_select_task$SegmentNumTask == SegNum, ]
+  fig_c <- add_trace(fig_c, 
+                     x = data_select_seg$Time, 
+                     y = data_select_seg$RightForce, 
+                     type = 'scatter', mode = 'lines',
+                     fill = 'tozeroy', fillcolor = data_select_seg$SegmentNumTask,
+                     showlegend = F,
+                     line = list(width = 0.5))
+}
+
+fig_c <- fig_c %>% layout(xaxis = list(title = 'Time (sec)'),
+                          yaxis = list(title = 'Coagulation \n Froce (N) \n '))
+
+data_select_task <- force_seg_data[force_seg_data$TaskType == "Pulling",]
+fig_p <- plot_ly()
+for (SegNum in 1:max(data_select_task$SegmentNumTask)) {
+  data_select_seg <- data_select_task[data_select_task$SegmentNumTask == SegNum, ]
+  fig_p <- add_trace(fig_p, 
+                     x = data_select_seg$Time, 
+                     y = data_select_seg$RightForce, 
+                     type = 'scatter', mode = 'lines',
+                     fill = 'tozeroy', fillcolor = data_select_seg$SegmentNumTask,
+                     showlegend = F,
+                     line = list(width = 0.5))
+}
+
+fig_p <- fig_p %>% layout(xaxis = list(title = 'Time (sec)'),
+                          yaxis = list(title = 'Pulling \n Froce (N) \n '))
+
+data_select_task <- force_seg_data[force_seg_data$TaskType == "Manipulation",]
+fig_m <- plot_ly()
+for (SegNum in 1:max(data_select_task$SegmentNumTask)) {
+  data_select_seg <- data_select_task[data_select_task$SegmentNumTask == SegNum, ]
+  fig_m <- add_trace(fig_m, 
+                     x = data_select_seg$Time, 
+                     y = data_select_seg$RightForce, 
+                     type = 'scatter', mode = 'lines',
+                     fill = 'tozeroy', fillcolor = data_select_seg$SegmentNumTask,
+                     showlegend = F,
+                     line = list(width = 0.5))
+}
+
+fig_m <- fig_m %>% layout(xaxis = list(title = 'Time (sec)'),
+                          yaxis = list(title = 'Manipulation \n Froce (N) \n '))
+
+data_select_task <- force_seg_data[force_seg_data$TaskType == "Dissecting",]
+fig_d <- plot_ly()
+for (SegNum in 1:max(data_select_task$SegmentNumTask)) {
+  data_select_seg <- data_select_task[data_select_task$SegmentNumTask == SegNum, ]
+  fig_d <- add_trace(fig_d, 
+                     x = data_select_seg$Time, 
+                     y = data_select_seg$RightForce, 
+                     type = 'scatter', mode = 'lines',
+                     fill = 'tozeroy', fillcolor = data_select_seg$SegmentNumTask,
+                     showlegend = F,
+                     line = list(width = 0.5))
+}
+
+fig_d <- fig_d %>% layout(xaxis = list(title = 'Time (sec)'),
+                          yaxis = list(title = 'Dissecting \n Froce (N) \n '))
+
+data_select_task <- force_seg_data[force_seg_data$TaskType == "Retracting",]
+fig_r <- plot_ly()
+for (SegNum in 1:max(data_select_task$SegmentNumTask)) {
+  data_select_seg <- data_select_task[data_select_task$SegmentNumTask == SegNum, ]
+  fig_r <- add_trace(fig_r, 
+                   x = data_select_seg$Time, 
+                   y = data_select_seg$RightForce, 
+                   type = 'scatter', mode = 'lines',
+                   fill = 'tozeroy', fillcolor = data_select_seg$SegmentNumTask,
+                   showlegend = F,
+                   line = list(width = 0.5))
+}
+
+fig_r <- fig_r %>% layout(xaxis = list(title = 'Time (sec)'),
+                          yaxis = list(title = 'Retracting \n Froce (N) \n'))
+
+figs <- list(fig_r, fig_m, fig_d, fig_p, fig_c)
+
+
+figs <- subplot(fig_r, fig_m, fig_d, fig_p, fig_c, 
+                nrows = length(figs), 
+                shareX = TRUE, titleX = TRUE, titleY = TRUE)
+
+figs <- figs %>% layout(title = "Overlaid Force Signals Overtime for Different Task Categories (Right Prong)")
+
+figs
+
+```
+
+### Left Prong Force 
+
+```{r plot_data_left, eval=TRUE, fig.align='center', fig.height=7, fig.width=7, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+data_select_task <- force_seg_data[force_seg_data$TaskType == "Coagulation",]
+fig_c <- plot_ly()
+for (SegNum in 1:max(data_select_task$SegmentNumTask)) {
+  data_select_seg <- data_select_task[data_select_task$SegmentNumTask == SegNum, ]
+  fig_c <- add_trace(fig_c, 
+                     x = data_select_seg$Time, 
+                     y = data_select_seg$LeftForce, 
+                     type = 'scatter', mode = 'lines',
+                     fill = 'tozeroy', fillcolor = data_select_seg$SegmentNumTask,
+                     showlegend = F,
+                     line = list(width = 0.5))
+}
+
+fig_c <- fig_c %>% layout(xaxis = list(title = 'Time (sec)'),
+                          yaxis = list(title = 'Coagulation \n Froce (N) \n '))
+
+data_select_task <- force_seg_data[force_seg_data$TaskType == "Pulling",]
+fig_p <- plot_ly()
+for (SegNum in 1:max(data_select_task$SegmentNumTask)) {
+  data_select_seg <- data_select_task[data_select_task$SegmentNumTask == SegNum, ]
+  fig_p <- add_trace(fig_p, 
+                     x = data_select_seg$Time, 
+                     y = data_select_seg$LeftForce, 
+                     type = 'scatter', mode = 'lines',
+                     fill = 'tozeroy', fillcolor = data_select_seg$SegmentNumTask,
+                     showlegend = F,
+                     line = list(width = 0.5))
+}
+
+fig_p <- fig_p %>% layout(xaxis = list(title = 'Time (sec)'),
+                          yaxis = list(title = 'Pulling \n Froce (N) \n '))
+
+data_select_task <- force_seg_data[force_seg_data$TaskType == "Manipulation",]
+fig_m <- plot_ly()
+for (SegNum in 1:max(data_select_task$SegmentNumTask)) {
+  data_select_seg <- data_select_task[data_select_task$SegmentNumTask == SegNum, ]
+  fig_m <- add_trace(fig_m, 
+                     x = data_select_seg$Time, 
+                     y = data_select_seg$LeftForce, 
+                     type = 'scatter', mode = 'lines',
+                     fill = 'tozeroy', fillcolor = data_select_seg$SegmentNumTask,
+                     showlegend = F,
+                     line = list(width = 0.5))
+}
+
+fig_m <- fig_m %>% layout(xaxis = list(title = 'Time (sec)'),
+                          yaxis = list(title = 'Manipulation \n Froce (N) \n '))
+
+data_select_task <- force_seg_data[force_seg_data$TaskType == "Dissecting",]
+fig_d <- plot_ly()
+for (SegNum in 1:max(data_select_task$SegmentNumTask)) {
+  data_select_seg <- data_select_task[data_select_task$SegmentNumTask == SegNum, ]
+  fig_d <- add_trace(fig_d, 
+                     x = data_select_seg$Time, 
+                     y = data_select_seg$LeftForce, 
+                     type = 'scatter', mode = 'lines',
+                     fill = 'tozeroy', fillcolor = data_select_seg$SegmentNumTask,
+                     showlegend = F,
+                     line = list(width = 0.5))
+}
+
+fig_d <- fig_d %>% layout(xaxis = list(title = 'Time (sec)'),
+                          yaxis = list(title = 'Dissecting \n Froce (N) \n '))
+
+data_select_task <- force_seg_data[force_seg_data$TaskType == "Retracting",]
+fig_r <- plot_ly()
+for (SegNum in 1:max(data_select_task$SegmentNumTask)) {
+  data_select_seg <- data_select_task[data_select_task$SegmentNumTask == SegNum, ]
+  fig_r <- add_trace(fig_r, 
+                   x = data_select_seg$Time, 
+                   y = data_select_seg$LeftForce, 
+                   type = 'scatter', mode = 'lines',
+                   fill = 'tozeroy', fillcolor = data_select_seg$SegmentNumTask,
+                   showlegend = F,
+                   line = list(width = 0.5))
+}
+
+fig_r <- fig_r %>% layout(xaxis = list(title = 'Time (sec)'),
+                          yaxis = list(title = 'Retracting \n Froce (N) \n '))
+
+figs <- list(fig_r, fig_m, fig_d, fig_p, fig_c)
+
+
+figs <- subplot(fig_r, fig_m, fig_d, fig_p, fig_c, 
+                nrows = length(figs), 
+                shareX = TRUE, titleX = TRUE, titleY = TRUE)
+
+figs <- figs %>% layout(title = "Overlaid Force Signals Overtime for Different Task Categories (Left Prong)")
+
+figs
+
+```
+
+## Force Time-series Features {.tabset .tabset-dropdown}
+
+Below are the interactive figures of the force time-series features extracted from all 20 cases categorized in 5 different tasks. Please navigate through the items in the dropdown list for different feature.
+
+### Force Duration
+
+```{r data.visualization.duration, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, message=FALSE, warning=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+
+fig <- force_seg_info %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[force_seg_info$User == 'Expert'],
+    x = ~DurationForce[force_seg_info$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[force_seg_info$User == 'Novice'],
+    x = ~DurationForce[force_seg_info$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Force Application Duration",
+    xaxis = list(
+      title = "Duration (sec)",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+```
+
+### Force Average
+
+```{r data.visualization.meanforce, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "MeanForce" = force_seg_info$MeanForce)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~MeanForce[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~MeanForce[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Force Mean",
+    xaxis = list(
+      title = "Force (N)",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+              
+# ggplot(temp_data, aes(x=MeanForce, y=TaskType, fill = TaskType)) + 
+#   geom_density_ridges(scale = 2, alpha = 0.5, point_alpha = 0.3, jittered_points = TRUE, show.legend = TRUE) + 
+#   theme_ridges() +
+#   scale_y_discrete(expand = c(0.01, 0)) +
+#   scale_x_continuous(expand = c(0.01, 0)) +  
+#   gghighlight(User == "Expert") + 
+#   ggtitle(label = "Ridgeline Plots of Force Mean",
+#           subtitle = "Shaded Area Corresponds to Novice Surgeon") +
+#   labs(x = "Force (N)", y = "Task Type") +
+#   scale_fill_brewer(palette="Dark2") +
+#   scale_color_brewer(palette="Dark2") +
+#   theme_minimal() +
+#   theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5, vjust = 2),
+#         plot.subtitle = element_text(size = 12, face = "bold", hjust = 0.5, vjust = 2),
+#         axis.title.y = element_text(size = 10),
+#         axis.title.x = element_text(size = 10)) 
+
+```
+
+### Force Max
+
+```{r data.visualization.maxforce, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "MaxForce" = force_seg_info$MaxForce)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~MaxForce[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~MaxForce[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Force Max",
+    xaxis = list(
+      title = "Force (N)",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+```
+
+### Force Min
+
+```{r data.visualization.minforce, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "MinForce" = force_seg_info$MinForce)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~MinForce[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~MinForce[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Force Min",
+    xaxis = list(
+      title = "Force (N)",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+            
+```
+
+### Force Range
+
+```{r data.visualization.rangeforce, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "RangeForce" = force_seg_info$RangeForce)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~RangeForce[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~RangeForce[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Force Range",
+    xaxis = list(
+      title = "Force (N)",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+```
+
+### Force Peak Average
+
+```{r data.visualization.forcepeaksmean, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "ForcePeaks" = force_seg_info$ForcePeaks)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~ForcePeaks[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~ForcePeaks[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of the Average of Force Peaks",
+    xaxis = list(
+      title = "Mean of Force Peaks",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+```
+
+### 1^st^ Derivative SD
+
+```{r data.visualization.dforcesd, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "DForceSD" = force_seg_info$DForceSD)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~DForceSD[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~DForceSD[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Standard Deviation for the First Derivative of the Force Signal",
+    xaxis = list(
+      title = "Standard Deviation of the First Derivative of Force",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig 
+
+```
+
+### Force Peak Counts
+
+```{r data.visualization.nperiod, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "nPeriod" = force_seg_info$nPeriod)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~nPeriod[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~nPeriod[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of the Number of Force Peaks",
+    xaxis = list(
+      title = "Number of Force Peaks",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+                        
+```
+
+### Force Signal Frequency
+
+```{r data.visualization.frequency, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "Frequency" = force_seg_info$Frequency)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~Frequency[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~Frequency[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Dominant Time-series Harmonics form FFT",
+    xaxis = list(
+      title = "Frequency (Hz)",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+```
+
+### Force Cycle Length
+
+```{r data.visualization.periodln, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "PeriodLn" = force_seg_info$PeriodLn)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~PeriodLn[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~PeriodLn[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of the Average Length of Force Cycles",
+    xaxis = list(
+      title = "Cycle Length (sec)",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+```
+
+### Force Signal Trend
+
+```{r data.visualization.trend, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "Trend" = force_seg_info$Trend)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~Trend[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~Trend[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Force Signal Trend",
+    xaxis = list(
+      title = "Trend",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig 
+
+```
+
+### Force Signal Fluctuations
+
+```{r data.visualization.fluctanal, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "FluctAnal" = force_seg_info$FluctAnal)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~FluctAnal[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~FluctAnal[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Force Signal Fluctuation Index",
+    xaxis = list(
+      title = "Fluctuation Index",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+                        
+
+```
+
+### Force Signal Linearity
+
+```{r data.visualization.linearity, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "Linearity" = force_seg_info$Linearity)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~Linearity[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~Linearity[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Force Signal Linearity Index",
+    xaxis = list(
+      title = "Linearity Index",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+```
+
+### Force Signal Stability
+
+```{r data.visualization.stability, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "Stability" = force_seg_info$Stability)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~Stability[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~Stability[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Force Signal Stability Index",
+    xaxis = list(
+      title = "Stability Index",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+```
+
+### Force Signal Lumpiness
+
+```{r data.visualization.lumpiness, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "Lumpiness" = force_seg_info$Lumpiness)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~Lumpiness[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~Lumpiness[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Force Signal Lumpiness Index",
+    xaxis = list(
+      title = "Lumpiness Index",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+```
+
+### Force Signal Curvature
+
+```{r data.visualization.curvature, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "Curvature" = force_seg_info$Curvature)
+  
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~Curvature[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~Curvature[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Force Signal Curvature Index",
+    xaxis = list(
+      title = "Curvature Index",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+                        
+```
+
+### Force Signal Entropy
+
+```{r data.visualization.entropy, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "Entropy" = force_seg_info$Entropy)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~Entropy[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~Entropy[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Force Signal Entropy Index",
+    xaxis = list(
+      title = "Entropy Index",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+```
+
+### Force Signal Autocorrelation (First)
+
+```{r data.visualization.autocorr1, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "AutocorrFuncE1" = force_seg_info$AutocorrFuncE1)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~AutocorrFuncE1[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~AutocorrFuncE1[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of First Autocorrelation Coefficient in Force Signal",
+    xaxis = list(
+      title = "Autocorrelation Coefficient",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+```
+
+### Force Signal Autocorrelation (First 10)
+
+```{r data.visualization.autocorr10, eval=TRUE, fig.align='center', fig.height=8, fig.width=9, warning=FALSE, message=FALSE, cache=TRUE, include=TRUE, out.width="95%"}
+
+temp_data <- data.frame("TaskType" = force_seg_info$TaskType, 
+                        "User" = force_seg_info$User,
+                        "AutocorrFuncE10" = force_seg_info$AutocorrFuncE10)
+
+fig <- temp_data %>%
+  plot_ly(type = 'violin')
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Expert'],
+    x = ~AutocorrFuncE10[temp_data$User == 'Expert'],
+    orientation = "h",
+    legendgroup = 'Expert',
+    scalegroup = 'Expert',
+    name = 'Expert',
+    side = 'positive',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("lightseagreen"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "lightseagreen"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+fig <- fig %>%
+  add_trace(
+    y = ~TaskType[temp_data$User == 'Novice'],
+    x = ~AutocorrFuncE10[temp_data$User == 'Novice'],
+    orientation = "h",
+    legendgroup = 'Novice',
+    scalegroup = 'Novice',
+    name = 'Novice',
+    side = 'negative',
+    points="all",
+    cliponaxis = FALSE,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    color = I("mediumpurple"),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "mediumpurple"
+      ),
+    symbol = 'line-ns'
+    )
+  )
+
+fig <- fig %>%
+  layout(
+    title = "Distribution of Sum of the First 10 Squared Autocorrelation Coefficient in Force Signal",
+    xaxis = list(
+      title = "Autocorrelation Coefficient",
+      showgrid = T
+    ),
+    yaxis = list(
+      title = "Task Type",
+      showgrid = T,
+      zeroline = F
+    ),
+    margin = list(t = 50, b = 10, l = 50, r = 50),
+    violingap = 2,
+    violingroupgap = 2,
+    violinmode = 'overlay'
+  )
+
+fig
+
+```
+
+## SmartForceps Dashboard App
+
+<font size="4"> **GO TO THE INTERACTIVE DATA APP:**</font>
+
+<style>
+div.blue { background-color:#0066CC; border-radius: 5px; padding: 10px;}
+</style>
+
+<div class = "blue" style="width:230px; height:45px">
+
+[<span style="color: white;"><font size="4"> **SmartForceps Dash App**</font></span>](http://amirbaghdadi.pythonanywhere.com)
+
+</div>
+
+
+
+
+
+
